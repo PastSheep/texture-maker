@@ -81,4 +81,4 @@ This project was developed entirely by **Claude Code** (model deepseek-v4-pro) a
 
 ## License
 
-MIT
+CC BY-NC 4.0

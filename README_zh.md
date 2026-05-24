@@ -81,4 +81,4 @@ pytest tests/ -v
 
 ## 许可
 
-MIT
+CC BY-NC 4.0
