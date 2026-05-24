@@ -54,9 +54,18 @@ class ConfigManager:
         self.save()
 
     def save(self) -> None:
-        """Write the current configuration to the JSON file."""
-        with open(self._path, "w", encoding="utf-8") as fh:
-            json.dump(self._data, fh, indent=2, ensure_ascii=False)
+        """Write the current configuration to the JSON file.
+
+        使用原子写入：先写临时文件，再替换目标文件，
+        避免写入过程中程序崩溃导致配置文件损坏。
+        """
+        tmp_path = self._path + ".tmp"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as fh:
+                json.dump(self._data, fh, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, self._path)
+        except OSError:
+            pass
 
     def add_recent(self, path: str) -> None:
         """Insert *path* at the front of the recent-projects list.
@@ -147,16 +156,22 @@ class ConfigManager:
     # ------------------------------------------------------------------
 
     def _load(self) -> None:
-        """Load configuration from disk, falling back to defaults."""
+        """从磁盘加载配置，异常时回退默认值并修复损坏文件。"""
         if not os.path.isfile(self._path):
-            self.save()  # create default file
+            self.save()
             return
+
+        corrupted = False
         try:
             with open(self._path, "r", encoding="utf-8") as fh:
                 stored = json.load(fh)
         except (json.JSONDecodeError, OSError):
             stored = {}
-        # Merge: keep defaults for keys not yet in the stored file.
+            corrupted = True
+
         merged = _DEFAULT_CONFIG.copy()
         merged.update(stored)
         self._data = merged
+
+        if corrupted:
+            self.save()
