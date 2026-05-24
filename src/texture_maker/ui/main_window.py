@@ -14,9 +14,9 @@ from pathlib import Path
 
 from PIL import Image as PILImage
 
-from ui.palette import PalettePanel
-from ui.canvas_widget import PixelCanvas
-from ui.tools import Tool
+from texture_maker.ui.palette import PalettePanel
+from texture_maker.ui.canvas_widget import PixelCanvas
+from texture_maker.tools import Tool
 
 
 class MainWindow(tkinter.Frame):

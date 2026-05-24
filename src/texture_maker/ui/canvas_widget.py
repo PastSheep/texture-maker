@@ -1,7 +1,7 @@
 import tkinter
 from PIL import Image, ImageTk, ImageGrab
 
-from ui.tools import Tool
+from texture_maker.tools import Tool
 
 
 class PixelCanvas(tkinter.Canvas):
@@ -42,6 +42,7 @@ class PixelCanvas(tkinter.Canvas):
         # --- 绘制状态 ---
         self._drawing = False
         self._last_pixel = None
+        self._right_drawing = False
         self._pan_mode = False         # 平移模式（空格键切换）
 
         self._setup_canvas()
@@ -65,7 +66,9 @@ class PixelCanvas(tkinter.Canvas):
         self.bind("<B1-Motion>", self._on_mouse_move)
         self.bind("<ButtonRelease-1>", self._on_mouse_up)
         # 右键快速取色/擦除
-        self.bind("<Button-3>", self._on_right_click)
+        self.bind("<Button-3>", self._on_right_down)
+        self.bind("<B3-Motion>", self._on_right_move)
+        self.bind("<ButtonRelease-3>", self._on_right_up)
         # Ctrl + 滚轮缩放
         self.bind("<Control-MouseWheel>", self._on_wheel_zoom)
         # 中键平移
@@ -136,8 +139,8 @@ class PixelCanvas(tkinter.Canvas):
     # 右键取色 / 擦除
     # ==============================================================
 
-    def _on_right_click(self, event):
-        """右键处理：取色或擦除（取决于配置）。仅在画笔模式下响应。"""
+    def _on_right_down(self, event):
+        """右键按下：取色（单击）或擦除（支持拖拽）。仅在画笔模式下响应。"""
         if self.tool_manager.current_tool != Tool.PEN:
             return
         px, py = self.get_pixel_from_event(event)
@@ -145,17 +148,38 @@ class PixelCanvas(tkinter.Canvas):
             return
         action = self.config_manager.get("right_click_action", "picker")
         if action == "eraser":
+            self._right_drawing = True
             self.image_model.begin_undo_step()
-            affected = self.tool_manager.get_affected_pixels(px, py)
-            for ax, ay in affected:
-                if 0 <= ax < self.image_model.width and 0 <= ay < self.image_model.height:
-                    self.image_model.set_pixel(ax, ay, (0, 0, 0, 0))
-                    self.refresh_rect(ax, ay)
-        else:  # "picker"
+            self._last_pixel = None
+            self._right_erase_at(px, py)
+        else:
             color = self.image_model.get_pixel(px, py)
             if color:
                 self.tool_manager.color = color
                 self.tool_manager.add_recent_color(color)
+
+    def _on_right_move(self, event):
+        """右键拖拽擦除。"""
+        if not self._right_drawing:
+            return
+        px, py = self.get_pixel_from_event(event)
+        if (px, py) == self._last_pixel:
+            return
+        self._right_erase_at(px, py)
+
+    def _on_right_up(self, event):
+        """右键释放。"""
+        self._right_drawing = False
+        self._last_pixel = None
+
+    def _right_erase_at(self, x, y):
+        """右键擦除指定位置（使用当前画笔大小）。"""
+        affected = self.tool_manager.get_affected_pixels(x, y)
+        for ax, ay in affected:
+            if 0 <= ax < self.image_model.width and 0 <= ay < self.image_model.height:
+                self.image_model.set_pixel(ax, ay, (0, 0, 0, 0))
+                self.refresh_rect(ax, ay)
+        self._last_pixel = (x, y)
 
     # ==============================================================
     # Ctrl + 滚轮缩放

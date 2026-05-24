@@ -4,9 +4,9 @@ import os
 import tkinter as tk
 from pathlib import Path
 
-from config import ConfigManager
-from image_model import ImageModel
-from ui.tools import ToolManager
+from texture_maker.config import ConfigManager
+from texture_maker.image_model import ImageModel
+from texture_maker.tools import ToolManager
 
 
 class Application:
@@ -58,7 +58,7 @@ class Application:
     def show_welcome(self) -> None:
         """Display the welcome / landing screen."""
         self._clear_ui()
-        from ui.welcome_screen import WelcomeScreen
+        from texture_maker.ui.welcome_screen import WelcomeScreen
 
         self._welcome = WelcomeScreen(self.root, self)
         self.root.title("贴图工坊")
@@ -66,7 +66,7 @@ class Application:
     def show_editor(self) -> None:
         """Display the main editor for the current model."""
         self._clear_ui()
-        from ui.main_window import MainWindow
+        from texture_maker.ui.main_window import MainWindow
 
         self._editor = MainWindow(
             self.root, self, self.current_model, self.tool_manager

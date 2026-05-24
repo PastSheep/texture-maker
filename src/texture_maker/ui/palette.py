@@ -16,7 +16,7 @@ import colorsys
 
 from PIL import Image
 
-from ui.tools import Tool
+from texture_maker.tools import Tool
 
 # ---------------------------------------------------------------------------
 # Built-in colour presets (Minecraft-themed)
