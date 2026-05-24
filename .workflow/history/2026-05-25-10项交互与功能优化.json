@@ -1,0 +1,34 @@
+{
+  "task_id": "task-20260525-003",
+  "title": "10项交互与功能优化",
+  "date": "2026-05-25",
+  "executors": 5,
+  "reviewers": 2,
+  "rounds": 2,
+  "verdict": "pass",
+  "features": [
+    "撤销/重做系统 (50步, Ctrl+Z/Y)",
+    "右键快速取色/擦除 (可配置)",
+    "鼠标滚轮缩放 (Ctrl+滚轮)",
+    "油漆桶工具 (泛洪填充)",
+    "工具快捷键 (B/E/I/G, [ ])",
+    "1:1实时预览窗",
+    "最近使用颜色 (16色自动记录)",
+    "导出缩放 (2x/4x/8x PNG, NEAREST)",
+    "画布平移 (空格+拖拽 / 中键拖拽)",
+    "对称绘制 (水平/垂直镜像)"
+  ],
+  "modified_files": [
+    "image_model.py",
+    "config.py",
+    "ui/tools.py",
+    "ui/canvas_widget.py",
+    "ui/main_window.py",
+    "ui/palette.py"
+  ],
+  "fixed_blocking_issues": [
+    "B-1: 油漆桶双重撤销快照 (fill_area移除begin_undo_step)",
+    "B-2: 对称绘制数据流断裂 (config同步到ToolManager)",
+    "B-3: 右键擦除无撤销保护 (添加begin_undo_step)"
+  ]
+}

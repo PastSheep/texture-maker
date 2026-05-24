@@ -47,6 +47,8 @@ class PalettePanel(tkinter.Frame):
         self.config_manager = config_manager
         self._on_tool_change_cb = on_tool_change
         self._custom_refresh_job = None
+        self._recent_colors = []  # internal list of RGBA tuples, newest first
+        self._has_recent_colors_api = hasattr(tool_manager, 'add_recent_color')
 
         self.configure(width=240)
         self.pack_propagate(False)
@@ -62,6 +64,7 @@ class PalettePanel(tkinter.Frame):
         self._build_current_color()
         self._build_rgb_sliders()
         self._build_preset_categories()
+        self._build_recent_colors()
         self._build_custom_palette()
         self._build_action_buttons()
 
@@ -343,6 +346,7 @@ class PalettePanel(tkinter.Frame):
         self._slider_vars["g"].set(g)
         self._slider_vars["b"].set(b)
         self._update_preview()
+        self._record_recent_color()
 
     def _on_slider_change(self, _=None):
         r = self._slider_vars["r"].get()
@@ -360,6 +364,7 @@ class PalettePanel(tkinter.Frame):
         self._slider_vars["b"].set(b)
         self._slider_vars["a"].set(a)
         self._update_preview()
+        self._record_recent_color()
 
     def _on_add_custom(self):
         r, g, b, a = self.tool_manager.color
@@ -370,6 +375,76 @@ class PalettePanel(tkinter.Frame):
     def _on_remove_custom(self, hex_color):
         self.config_manager.remove_custom_color(hex_color)
         self._refresh_custom()
+
+    # ----------------------------------------------------------------
+    # G. Recent colors
+    # ----------------------------------------------------------------
+
+    def _build_recent_colors(self):
+        frame = tkinter.LabelFrame(self, text="最近使用", padx=4, pady=3)
+        frame.pack(fill="x", padx=5, pady=2)
+
+        self._recent_container = tkinter.Frame(frame)
+        self._recent_container.pack()
+
+        self._refresh_recent()
+
+    def _refresh_recent(self):
+        for w in self._recent_container.winfo_children():
+            w.destroy()
+
+        # Get recent colors from tool_manager or internal list
+        if self._has_recent_colors_api:
+            colors = self.tool_manager.recent_colors
+        else:
+            colors = self._recent_colors
+
+        if not colors:
+            empty = tkinter.Label(
+                self._recent_container,
+                text="（空）",
+                fg="#999",
+                font=("TkDefaultFont", 9),
+            )
+            empty.pack()
+            return
+
+        # Show up to 16 colors in 4-column grid
+        display_colors = colors[:16]
+        cols = 4
+        for i, rgba in enumerate(display_colors):
+            r = i // cols
+            c = i % cols
+            hex_color = f"#{rgba[0]:02x}{rgba[1]:02x}{rgba[2]:02x}"
+            swatch = tkinter.Canvas(
+                self._recent_container,
+                width=24,
+                height=24,
+                highlightthickness=1,
+                highlightbackground="#ccc",
+                cursor="hand2",
+            )
+            swatch.grid(row=r, column=c, padx=2, pady=2)
+            swatch.create_rectangle(0, 0, 24, 24, fill=hex_color, outline="")
+            swatch.bind(
+                "<Button-1>",
+                lambda _e, h=hex_color: self._on_color_click(h),
+            )
+
+    def _record_recent_color(self):
+        """Record current tool_manager color to recent list."""
+        rgba = self.tool_manager.color
+        if self._has_recent_colors_api:
+            self.tool_manager.add_recent_color(rgba)
+        else:
+            # Deduplicate: remove existing occurrence
+            if rgba in self._recent_colors:
+                self._recent_colors.remove(rgba)
+            # Insert at front (newest first)
+            self._recent_colors.insert(0, rgba)
+            # Keep max 16
+            self._recent_colors[:] = self._recent_colors[:16]
+        self._refresh_recent()
 
     # ==================================================================
     # Preview update

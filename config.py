@@ -14,6 +14,8 @@ _DEFAULT_CONFIG = {
     "reference_opacity": 0.3,
     "show_grid": True,
     "grid_color": "#808080",
+    "right_click_action": "picker",
+    "symmetry_mode": "none",
 }
 
 
@@ -115,6 +117,30 @@ class ConfigManager:
     def get_tool_size(self, default: int = 1) -> int:
         """Return the persisted tool size."""
         return self.get("tool_size", default)
+
+    # ------------------------------------------------------------------
+    # 右键行为配置
+    # ------------------------------------------------------------------
+
+    def get_right_click_action(self) -> str:
+        """返回右键点击行为，可选值 "picker" 或 "eraser"。"""
+        return self.get("right_click_action", "picker")
+
+    def set_right_click_action(self, action: str) -> None:
+        """设置右键点击行为并保存，action 应为 "picker" 或 "eraser"。"""
+        self.set("right_click_action", action)
+
+    # ------------------------------------------------------------------
+    # 对称模式配置
+    # ------------------------------------------------------------------
+
+    def get_symmetry_mode(self) -> str:
+        """返回对称模式，可选值 "none" / "horizontal" / "vertical"。"""
+        return self.get("symmetry_mode", "none")
+
+    def set_symmetry_mode(self, mode: str) -> None:
+        """设置对称模式并保存，mode 应为 "none" / "horizontal" / "vertical"。"""
+        self.set("symmetry_mode", mode)
 
     # ------------------------------------------------------------------
     # internal helpers

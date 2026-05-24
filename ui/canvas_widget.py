@@ -15,7 +15,8 @@ class PixelCanvas(tkinter.Canvas):
       - 实时局部刷新
     """
 
-    def __init__(self, parent, image_model, tool_manager, config_manager, on_screen_pick=None, **kwargs):
+    def __init__(self, parent, image_model, tool_manager, config_manager,
+                 on_screen_pick=None, on_zoom_changed=None, **kwargs):
         kwargs.setdefault("highlightthickness", 0)
         kwargs.setdefault("background", "#FFFFFF")
         super().__init__(parent, **kwargs)
@@ -24,6 +25,7 @@ class PixelCanvas(tkinter.Canvas):
         self.tool_manager = tool_manager
         self.config_manager = config_manager
         self._on_screen_pick_cb = on_screen_pick
+        self._on_zoom_changed = on_zoom_changed
 
         # --- 画布状态 ---
         self.zoom = 16                 # 每像素缩放的屏幕像素数
@@ -40,6 +42,7 @@ class PixelCanvas(tkinter.Canvas):
         # --- 绘制状态 ---
         self._drawing = False
         self._last_pixel = None
+        self._pan_mode = False         # 平移模式（空格键切换）
 
         self._setup_canvas()
         self._bind_events()
@@ -50,16 +53,28 @@ class PixelCanvas(tkinter.Canvas):
     # ==============================================================
 
     def _setup_canvas(self):
-        """根据 image_model 和 zoom 设置画布尺寸。"""
+        """根据 image_model 和 zoom 设置画布尺寸和滚动区域。"""
         w = self.image_model.width * self.zoom
         h = self.image_model.height * self.zoom
         self.config(width=w, height=h)
+        self.config(scrollregion=(0, 0, w, h))
 
     def _bind_events(self):
-        """绑定鼠标事件。"""
+        """绑定鼠标和键盘事件。"""
         self.bind("<Button-1>", self._on_mouse_down)
         self.bind("<B1-Motion>", self._on_mouse_move)
         self.bind("<ButtonRelease-1>", self._on_mouse_up)
+        # 右键快速取色/擦除
+        self.bind("<Button-3>", self._on_right_click)
+        # Ctrl + 滚轮缩放
+        self.bind("<Control-MouseWheel>", self._on_wheel_zoom)
+        # 中键平移
+        self.bind("<Button-2>", self._on_middle_down)
+        self.bind("<B2-Motion>", self._on_middle_move)
+        self.bind("<ButtonRelease-2>", self._on_middle_up)
+        # 空格键切换平移模式
+        self.bind_all("<Key-space>", self._on_space_down)
+        self.bind_all("<KeyRelease-space>", self._on_space_up)
 
     # ==============================================================
     # 坐标转换
@@ -76,17 +91,36 @@ class PixelCanvas(tkinter.Canvas):
     # ==============================================================
 
     def _on_mouse_down(self, event):
+        # 平移模式：记录扫描锚点
+        if self._pan_mode:
+            self.scan_mark(event.x, event.y)
+            self._drawing = True
+            return
         # 取色器模式：拾取屏幕上任意位置的像素颜色
         if self.tool_manager.current_tool == Tool.PICKER:
             self._pick_screen_color(event.x_root, event.y_root)
             return
         px, py = self.get_pixel_from_event(event)
+        # 油漆桶：泛洪填充
+        if self.tool_manager.current_tool == Tool.BUCKET:
+            self.image_model.begin_undo_step()
+            changed = self.image_model.fill_area(px, py, self.tool_manager.color)
+            for cx, cy in changed:
+                self.refresh_rect(cx, cy)
+            self.tool_manager.add_recent_color(self.tool_manager.color)
+            return
+        # 画笔/橡皮：开始新笔画 = 新撤销步骤
+        self.image_model.begin_undo_step()
         self._drawing = True
         self._last_pixel = None
         self._draw_at(px, py)
 
     def _on_mouse_move(self, event):
         if not self._drawing:
+            return
+        # 平移模式：拖拽移动画布
+        if self._pan_mode:
+            self.scan_dragto(event.x, event.y, gain=1)
             return
         px, py = self.get_pixel_from_event(event)
         # 避免同一像素重复绘制
@@ -97,6 +131,76 @@ class PixelCanvas(tkinter.Canvas):
     def _on_mouse_up(self, event):
         self._drawing = False
         self._last_pixel = None
+
+    # ==============================================================
+    # 右键取色 / 擦除
+    # ==============================================================
+
+    def _on_right_click(self, event):
+        """右键处理：取色或擦除（取决于配置）。仅在画笔模式下响应。"""
+        if self.tool_manager.current_tool != Tool.PEN:
+            return
+        px, py = self.get_pixel_from_event(event)
+        if not (0 <= px < self.image_model.width and 0 <= py < self.image_model.height):
+            return
+        action = self.config_manager.get("right_click_action", "picker")
+        if action == "eraser":
+            self.image_model.begin_undo_step()
+            affected = self.tool_manager.get_affected_pixels(px, py)
+            for ax, ay in affected:
+                if 0 <= ax < self.image_model.width and 0 <= ay < self.image_model.height:
+                    self.image_model.set_pixel(ax, ay, (0, 0, 0, 0))
+                    self.refresh_rect(ax, ay)
+        else:  # "picker"
+            color = self.image_model.get_pixel(px, py)
+            if color:
+                self.tool_manager.color = color
+                self.tool_manager.add_recent_color(color)
+
+    # ==============================================================
+    # Ctrl + 滚轮缩放
+    # ==============================================================
+
+    def _on_wheel_zoom(self, event):
+        """Ctrl+鼠标滚轮缩放画布。"""
+        if event.delta > 0:
+            self.set_zoom(self.zoom * 2)
+        else:
+            self.set_zoom(self.zoom // 2)
+
+    # ==============================================================
+    # 画布平移（空格 + 拖拽 / 中键拖拽）
+    # ==============================================================
+
+    def _on_middle_down(self, event):
+        """中键按下：开始平移。"""
+        self.scan_mark(event.x, event.y)
+        self._drawing = True
+
+    def _on_middle_move(self, event):
+        """中键拖拽：平移画布。"""
+        if self._drawing:
+            self.scan_dragto(event.x, event.y, gain=1)
+
+    def _on_middle_up(self, event):
+        """中键释放：结束平移。"""
+        self._drawing = False
+
+    def _on_space_down(self, event):
+        """空格键按下：切换到平移模式。"""
+        self._pan_mode = True
+        self.update_cursor()
+
+    def _on_space_up(self, event):
+        """空格键释放：退出平移模式。"""
+        self._pan_mode = False
+        if self._drawing:
+            self._drawing = False
+        self.update_cursor()
+
+    # ==============================================================
+    # 屏幕取色
+    # ==============================================================
 
     def _pick_screen_color(self, screen_x, screen_y):
         """从屏幕坐标 (screen_x, screen_y) 抓取像素颜色。"""
@@ -113,9 +217,27 @@ class PixelCanvas(tkinter.Canvas):
             pass
 
     def _draw_at(self, x, y):
-        """在 (x, y) 处执行绘制（受当前工具、大小影响）。"""
+        """在 (x, y) 处执行绘制（受当前工具、大小、对称模式影响）。"""
         affected = self.tool_manager.get_affected_pixels(x, y)
-        for px, py in affected:
+        # 对称绘制：收集所有需要绘制的像素（含对称镜像）
+        sym_mode = getattr(self.tool_manager, 'symmetry_mode', 'none')
+        all_pixels = list(affected)
+        if sym_mode in ('horizontal', 'both'):
+            h = self.image_model.height
+            mirror_y = lambda py: h - 1 - py
+            for px, py in affected:
+                all_pixels.append((px, mirror_y(py)))
+        if sym_mode in ('vertical', 'both'):
+            w = self.image_model.width
+            for px, py in affected:
+                all_pixels.append((w - 1 - px, py))
+        if sym_mode == 'both':
+            h = self.image_model.height
+            w = self.image_model.width
+            for px, py in affected:
+                all_pixels.append((w - 1 - px, h - 1 - py))
+
+        for px, py in all_pixels:
             if not (0 <= px < self.image_model.width and 0 <= py < self.image_model.height):
                 continue
             if self.tool_manager.current_tool == Tool.PEN:
@@ -126,9 +248,13 @@ class PixelCanvas(tkinter.Canvas):
         self._last_pixel = (x, y)
 
     def update_cursor(self):
-        """根据当前工具更新画布鼠标样式。"""
-        if self.tool_manager.current_tool == Tool.PICKER:
+        """根据当前工具和状态更新画布鼠标样式。"""
+        if self._pan_mode:
+            self.config(cursor="fleur")
+        elif self.tool_manager.current_tool == Tool.PICKER:
             self.config(cursor="crosshair")
+        elif self.tool_manager.current_tool == Tool.BUCKET:
+            self.config(cursor="target")
         else:
             self.config(cursor="")
 
@@ -266,8 +392,12 @@ class PixelCanvas(tkinter.Canvas):
         w = self.image_model.width * self.zoom
         h = self.image_model.height * self.zoom
         self.config(width=w, height=h)
+        self.config(scrollregion=(0, 0, w, h))
         # 全量刷新（需要重建像素矩形和参考图）
         self.refresh()
+        # 通知外部缩放变化（如更新缩放百分比显示）
+        if self._on_zoom_changed:
+            self._on_zoom_changed()
 
     # ==============================================================
     # 参考图叠加层

@@ -12,6 +12,8 @@ import tkinter
 from tkinter import filedialog, messagebox
 from pathlib import Path
 
+from PIL import Image as PILImage
+
 from ui.palette import PalettePanel
 from ui.canvas_widget import PixelCanvas
 from ui.tools import Tool
@@ -26,12 +28,23 @@ class MainWindow(tkinter.Frame):
         self.image_model = image_model
         self.tool_manager = tool_manager
 
+        # 菜单引用（用于撤销/重做状态更新）
+        self._edit_menu = None
+        self._undo_idx = None
+        self._redo_idx = None
+        self._last_can_undo = False
+        self._last_can_redo = False
+
+        # 1:1 预览窗口
+        self._preview_win = None
+
         self.pack(expand=True, fill="both")
 
         self._build_ui()
         self._setup_bindings()
         self._update_title()
         self._start_title_watcher()
+        self._start_undo_redo_watcher()
 
     # ==================================================================
     # Layout
@@ -73,7 +86,7 @@ class MainWindow(tkinter.Frame):
         menu_bar = tkinter.Menu(root)
         root.config(menu=menu_bar)
 
-        # File
+        # ========== 文件 ==========
         file_menu = tkinter.Menu(menu_bar, tearoff=0)
         file_menu.add_command(
             label="保存",
@@ -85,6 +98,23 @@ class MainWindow(tkinter.Frame):
             command=self._on_save_as,
             accelerator="Ctrl+Shift+S",
         )
+
+        # 导出子菜单
+        export_menu = tkinter.Menu(file_menu, tearoff=0)
+        export_menu.add_command(
+            label="导出 2x PNG",
+            command=lambda: self._on_export(2),
+        )
+        export_menu.add_command(
+            label="导出 4x PNG",
+            command=lambda: self._on_export(4),
+        )
+        export_menu.add_command(
+            label="导出 8x PNG",
+            command=lambda: self._on_export(8),
+        )
+        file_menu.add_cascade(label="导出", menu=export_menu)
+
         file_menu.add_separator()
         file_menu.add_command(
             label="关闭",
@@ -93,13 +123,46 @@ class MainWindow(tkinter.Frame):
         )
         menu_bar.add_cascade(label="文件", menu=file_menu)
 
-        # Edit
+        # ========== 编辑 ==========
         edit_menu = tkinter.Menu(menu_bar, tearoff=0)
-        edit_menu.add_command(label="撤销", state="disabled")
-        edit_menu.add_command(label="重做", state="disabled")
+
+        self._edit_menu = edit_menu
+        self._undo_idx = edit_menu.add_command(
+            label="撤销",
+            command=self._on_undo,
+            accelerator="Ctrl+Z",
+            state="disabled",
+        )
+        self._redo_idx = edit_menu.add_command(
+            label="重做",
+            command=self._on_redo,
+            accelerator="Ctrl+Y",
+            state="disabled",
+        )
+        edit_menu.add_separator()
+
+        # 右键行为子菜单
+        right_click_var = tkinter.StringVar(
+            value=self.app.config.get_right_click_action()
+        )
+        right_click_menu = tkinter.Menu(edit_menu, tearoff=0)
+        right_click_menu.add_radiobutton(
+            label="右键取色",
+            variable=right_click_var,
+            value="picker",
+            command=lambda: self.app.config.set_right_click_action("picker"),
+        )
+        right_click_menu.add_radiobutton(
+            label="右键擦除",
+            variable=right_click_var,
+            value="eraser",
+            command=lambda: self.app.config.set_right_click_action("eraser"),
+        )
+        edit_menu.add_cascade(label="右键行为", menu=right_click_menu)
+
         menu_bar.add_cascade(label="编辑", menu=edit_menu)
 
-        # View
+        # ========== 视图 ==========
         view_menu = tkinter.Menu(menu_bar, tearoff=0)
         view_menu.add_command(
             label="放大",
@@ -117,6 +180,7 @@ class MainWindow(tkinter.Frame):
             accelerator="Ctrl+0",
         )
         view_menu.add_separator()
+
         self._grid_var = tkinter.BooleanVar(value=True)
         view_menu.add_checkbutton(
             label="显示网格",
@@ -124,9 +188,44 @@ class MainWindow(tkinter.Frame):
             command=self._on_toggle_grid,
             accelerator="Ctrl+G",
         )
+        view_menu.add_separator()
+
+        # 1:1 预览
+        self._preview_var = tkinter.BooleanVar(value=False)
+        view_menu.add_checkbutton(
+            label="显示 1:1 预览",
+            variable=self._preview_var,
+            command=self._on_toggle_preview,
+        )
+
+        # 对称绘制子菜单
+        symmetry_var = tkinter.StringVar(
+            value=self.app.config.get_symmetry_mode()
+        )
+        symmetry_menu = tkinter.Menu(view_menu, tearoff=0)
+        symmetry_menu.add_radiobutton(
+            label="关闭",
+            variable=symmetry_var,
+            value="none",
+            command=lambda: self._on_symmetry_change("none"),
+        )
+        symmetry_menu.add_radiobutton(
+            label="水平镜像",
+            variable=symmetry_var,
+            value="horizontal",
+            command=lambda: self._on_symmetry_change("horizontal"),
+        )
+        symmetry_menu.add_radiobutton(
+            label="垂直镜像",
+            variable=symmetry_var,
+            value="vertical",
+            command=lambda: self._on_symmetry_change("vertical"),
+        )
+        view_menu.add_cascade(label="对称绘制", menu=symmetry_menu)
+
         menu_bar.add_cascade(label="视图", menu=view_menu)
 
-        # Help
+        # ========== 帮助 ==========
         help_menu = tkinter.Menu(menu_bar, tearoff=0)
         help_menu.add_command(label="关于", command=self._on_about)
         menu_bar.add_cascade(label="帮助", menu=help_menu)
@@ -154,6 +253,19 @@ class MainWindow(tkinter.Frame):
                 indicatoron=False,
                 width=7,
                 command=lambda t=tool_type: self._on_tool_change(t),
+            )
+            btn.pack(side="left", padx=2)
+
+        # 油漆桶按钮（如果 Tool 枚举中存在）
+        if hasattr(Tool, 'BUCKET'):
+            btn = tkinter.Radiobutton(
+                toolbar,
+                text="油漆桶",
+                variable=self._tool_var,
+                value=Tool.BUCKET.name.lower(),
+                indicatoron=False,
+                width=7,
+                command=lambda: self._on_tool_change(Tool.BUCKET),
             )
             btn.pack(side="left", padx=2)
 
@@ -237,6 +349,7 @@ class MainWindow(tkinter.Frame):
             self.tool_manager,
             self.app.config,
             on_screen_pick=self._on_screen_pick,
+            on_zoom_changed=self._update_zoom_display,
             xscrollcommand=h_scroll.set,
             yscrollcommand=v_scroll.set,
             bg="#e0e0e0",
@@ -264,6 +377,20 @@ class MainWindow(tkinter.Frame):
         root.bind("<Control-0>", lambda _e: self._on_zoom_reset())
         root.bind("<Control-g>", lambda _e: self._on_toggle_grid())
         root.bind("<Control-G>", lambda _e: self._on_toggle_grid())
+        # Ctrl+Z / Ctrl+Y 撤销/重做
+        root.bind("<Control-z>", lambda _e: self._on_undo())
+        root.bind("<Control-Z>", lambda _e: self._on_undo())
+        root.bind("<Control-y>", lambda _e: self._on_redo())
+        root.bind("<Control-Y>", lambda _e: self._on_redo())
+        # 工具快捷键（小写字母）
+        root.bind("b", lambda _e: self._set_tool(Tool.PEN))
+        root.bind("e", lambda _e: self._set_tool(Tool.ERASER))
+        root.bind("i", lambda _e: self._set_tool(Tool.PICKER))
+        if hasattr(Tool, 'BUCKET'):
+            root.bind("g", lambda _e: self._set_tool(Tool.BUCKET))
+        # 笔刷大小快捷键
+        root.bind("<KeyPress-bracketleft>", lambda _e: self._adjust_size(-1))
+        root.bind("<KeyPress-bracketright>", lambda _e: self._adjust_size(+1))
 
     # ==================================================================
     # Title bar update
@@ -295,6 +422,30 @@ class MainWindow(tkinter.Frame):
         self.after(500, self._tick_title)
 
     # ==================================================================
+    # Undo/Redo state watcher
+    # ==================================================================
+
+    def _start_undo_redo_watcher(self):
+        """每隔 300ms 检查撤销/重做状态，更新菜单项。"""
+        self._tick_undo_redo()
+
+    def _tick_undo_redo(self):
+        if self._edit_menu is None:
+            self.after(300, self._tick_undo_redo)
+            return
+        can_undo = hasattr(self.image_model, 'can_undo') and self.image_model.can_undo()
+        can_redo = hasattr(self.image_model, 'can_redo') and self.image_model.can_redo()
+        if can_undo != self._last_can_undo:
+            state = "normal" if can_undo else "disabled"
+            self._edit_menu.entryconfig(self._undo_idx, state=state)
+            self._last_can_undo = can_undo
+        if can_redo != self._last_can_redo:
+            state = "normal" if can_redo else "disabled"
+            self._edit_menu.entryconfig(self._redo_idx, state=state)
+            self._last_can_redo = can_redo
+        self.after(300, self._tick_undo_redo)
+
+    # ==================================================================
     # Toolbar handlers
     # ==================================================================
 
@@ -319,9 +470,6 @@ class MainWindow(tkinter.Frame):
             pass
 
     def _update_zoom_display(self):
-        pct = self.canvas.zoom * 100 // 16  # scale relative to 1x = 100%
-        # or simpler: zoom * 100 / 16, but let's just show zoom*100/16
-        # Actually zoom=16 means 16 screen px per pixel, so 16/16*100 = 100%
         display = int(self.canvas.zoom * 100 / 16)
         self._zoom_label.config(text=f"{display}%")
 
@@ -399,8 +547,147 @@ class MainWindow(tkinter.Frame):
         self.app.close_current()
 
     # ==================================================================
+    # Undo / Redo
+    # ==================================================================
+
+    def _on_undo(self):
+        """撤销一步操作，刷新画布并更新标题。"""
+        if not (hasattr(self.image_model, 'undo') and self.image_model.can_undo()):
+            return
+        self.image_model.undo()
+        self.canvas.refresh()
+        self._update_title()
+
+    def _on_redo(self):
+        """重做一步操作，刷新画布并更新标题。"""
+        if not (hasattr(self.image_model, 'redo') and self.image_model.can_redo()):
+            return
+        self.image_model.redo()
+        self.canvas.refresh()
+        self._update_title()
+
+    # ==================================================================
+    # Export
+    # ==================================================================
+
+    def _on_export(self, scale: int):
+        """导出当前图像放大 *scale* 倍的 PNG，不改变当前项目。"""
+        path = self.image_model.path
+        if path:
+            stem = Path(path).stem
+        else:
+            stem = "未命名"
+
+        default_name = f"{stem}_{scale}x.png"
+        save_path = filedialog.asksaveasfilename(
+            title=f"导出 {scale}x PNG",
+            initialfile=default_name,
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png")],
+        )
+        if not save_path:
+            return
+
+        img = self.image_model.get_image()
+        w = img.width * scale
+        h = img.height * scale
+        enlarged = img.resize((w, h), PILImage.NEAREST)
+        enlarged.save(save_path)
+
+    # ==================================================================
+    # Tool keyboard shortcuts
+    # ==================================================================
+
+    def _set_tool(self, tool):
+        """通过快捷键设置当前工具并更新 UI。"""
+        self.tool_manager.current_tool = tool
+        self._tool_var.set(tool.name.lower())
+        self.canvas.update_cursor()
+
+    def _adjust_size(self, delta: int):
+        """调整笔刷大小（快捷键用），范围 1-16。"""
+        new_size = max(1, min(16, self.tool_manager.size + delta))
+        self.tool_manager.size = new_size
+        self._size_var.set(new_size)
+        self.app.config.set_tool_size(new_size)
+
+    # ==================================================================
+    # 1:1 Preview
+    # ==================================================================
+
+    def _on_toggle_preview(self):
+        """切换 1:1 预览窗口。"""
+        if self._preview_var.get():
+            self._show_preview()
+        else:
+            self._hide_preview()
+
+    def _show_preview(self):
+        """打开 1:1 预览窗口，显示图像实际像素大小。"""
+        self._preview_win = tkinter.Toplevel(self.winfo_toplevel())
+        self._preview_win.title("1:1 预览")
+        self._preview_win.transient(self.winfo_toplevel())
+
+        self._preview_label = tkinter.Label(self._preview_win)
+        self._preview_label.pack()
+
+        self._refresh_preview()
+
+        self._preview_win.protocol("WM_DELETE_WINDOW", self._on_preview_closed)
+        self._preview_last_mod = self.image_model.is_modified
+        self._poll_preview()
+
+    def _hide_preview(self):
+        """关闭 1:1 预览窗口。"""
+        try:
+            if self._preview_win:
+                self._preview_win.destroy()
+        except (AttributeError, tkinter.TclError):
+            pass
+        self._preview_win = None
+
+    def _on_preview_closed(self):
+        """预览窗口被用户关闭时同步菜单勾选状态。"""
+        self._preview_var.set(False)
+        self._hide_preview()
+
+    def _refresh_preview(self):
+        """刷新预览窗口中的图像显示。"""
+        try:
+            from PIL import ImageTk
+            img = self.image_model.get_image()
+            self._preview_photo = ImageTk.PhotoImage(img)
+            self._preview_label.config(image=self._preview_photo)
+            self._preview_win.geometry(f"{img.width}x{img.height}")
+        except Exception:
+            pass
+
+    def _poll_preview(self):
+        """每隔 300ms 检查图像是否修改，实时更新预览。"""
+        if not getattr(self, '_preview_win', None):
+            return
+        try:
+            if not self._preview_win.winfo_exists():
+                self._preview_var.set(False)
+                return
+        except tkinter.TclError:
+            self._preview_var.set(False)
+            return
+
+        if self.image_model.is_modified != self._preview_last_mod:
+            self._preview_last_mod = self.image_model.is_modified
+            self._refresh_preview()
+
+        self.after(300, self._poll_preview)
+
+    # ==================================================================
     # Menu helpers
     # ==================================================================
+
+    def _on_symmetry_change(self, mode: str):
+        """更新对称模式并同步到 config 和 tool_manager。"""
+        self.app.config.set_symmetry_mode(mode)
+        self.tool_manager.symmetry_mode = mode
 
     def _on_about(self):
         messagebox.showinfo(

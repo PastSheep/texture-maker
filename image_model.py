@@ -7,6 +7,7 @@ from pathlib import Path
 from PIL import Image
 
 _MAX_SIZE = 128
+_MAX_HISTORY = 50  # 撤销历史最大步数
 
 
 class ImageModel:
@@ -35,6 +36,8 @@ class ImageModel:
         model.image = img
         model.path = path
         model._is_modified = False
+        model._history = []
+        model._redo_stack = []
         return model
 
     @classmethod
@@ -53,6 +56,8 @@ class ImageModel:
         model.image = img
         model.path = str(path)
         model._is_modified = False
+        model._history = []
+        model._redo_stack = []
         return model
 
     # ------------------------------------------------------------------
@@ -110,6 +115,61 @@ class ImageModel:
         if changed:
             self._is_modified = True
         return changed
+
+    # ------------------------------------------------------------------
+    # 撤销 / 重做
+    # ------------------------------------------------------------------
+
+    def begin_undo_step(self) -> None:
+        """在执行修改操作前快照当前图像，推入撤销栈。
+
+        超过 ``_MAX_HISTORY`` 步时移除最旧的快照，同时清空重做栈。
+        """
+        snapshot = self.image.copy()
+        self._history.append(snapshot)
+        self._redo_stack.clear()
+        if len(self._history) > _MAX_HISTORY:
+            self._history.pop(0)
+
+    def undo(self) -> bool:
+        """撤销到上一个历史快照。
+
+        Returns:
+            True 如果成功撤销，False 如果没有历史记录。
+        """
+        if not self._history:
+            return False
+        snapshot = self._history.pop()
+        self._redo_stack.append(self.image)
+        self.image = snapshot
+        self._is_modified = True
+        return True
+
+    def redo(self) -> bool:
+        """重做之前撤销的操作。
+
+        Returns:
+            True 如果成功重做，False 如果没有重做记录。
+        """
+        if not self._redo_stack:
+            return False
+        snapshot = self._redo_stack.pop()
+        self._history.append(self.image)
+        self.image = snapshot
+        self._is_modified = True
+        return True
+
+    def can_undo(self) -> bool:
+        """返回是否有可撤销的历史记录。"""
+        return len(self._history) > 0
+
+    def can_redo(self) -> bool:
+        """返回是否有可重做的记录。"""
+        return len(self._redo_stack) > 0
+
+    def get_undo_redo_status(self) -> tuple[bool, bool]:
+        """返回 (可以撤销, 可以重做) 状态元组。"""
+        return (self.can_undo(), self.can_redo())
 
     # ------------------------------------------------------------------
     # Image access
