@@ -19,7 +19,7 @@ class NewProjectDialog:
         self.app = app
 
         self.dialog = tkinter.Toplevel(parent)
-        self.dialog.title("New Project")
+        self.dialog.title("新建项目")
         self.dialog.transient(parent)
         self.dialog.grab_set()
         self.dialog.resizable(False, False)
@@ -29,7 +29,7 @@ class NewProjectDialog:
         self.width_var = tkinter.IntVar(value=16)
         self.height_var = tkinter.IntVar(value=16)
         self.save_dir = tkinter.StringVar(value="")
-        self.file_name = tkinter.StringVar(value="texture")
+        self.file_name = tkinter.StringVar(value="贴图")
 
         self._build_ui()
 
@@ -55,7 +55,7 @@ class NewProjectDialog:
         # -- Canvas Size presets (3 x 2 grid) --
         preset_frame = tkinter.LabelFrame(
             self.dialog,
-            text="Canvas Size (MC Presets)",
+            text="画布尺寸（MC预设）",
             padx=10,
             pady=10,
         )
@@ -76,13 +76,13 @@ class NewProjectDialog:
         # -- Custom size --
         custom_frame = tkinter.LabelFrame(
             self.dialog,
-            text="Custom Size",
+            text="自定义尺寸",
             padx=10,
             pady=8,
         )
         custom_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
 
-        tkinter.Label(custom_frame, text="Width:").grid(row=0, column=0, padx=(0, 4))
+        tkinter.Label(custom_frame, text="宽：").grid(row=0, column=0, padx=(0, 4))
         self.width_spin = tkinter.Spinbox(
             custom_frame,
             from_=1,
@@ -92,7 +92,7 @@ class NewProjectDialog:
         )
         self.width_spin.grid(row=0, column=1, padx=(0, 15))
 
-        tkinter.Label(custom_frame, text="Height:").grid(row=0, column=2, padx=(0, 4))
+        tkinter.Label(custom_frame, text="高：").grid(row=0, column=2, padx=(0, 4))
         self.height_spin = tkinter.Spinbox(
             custom_frame,
             from_=1,
@@ -106,13 +106,13 @@ class NewProjectDialog:
         loc_frame = tkinter.Frame(self.dialog)
         loc_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
 
-        tkinter.Label(loc_frame, text="Save Location:").grid(
+        tkinter.Label(loc_frame, text="保存位置：").grid(
             row=0, column=0, sticky="w", pady=(0, 3)
         )
 
         self.path_label = tkinter.Label(
             loc_frame,
-            text="(not selected)",
+            text="（未选择）",
             fg="gray",
             anchor="w",
             width=45,
@@ -120,7 +120,7 @@ class NewProjectDialog:
         self.path_label.grid(row=1, column=0, padx=(0, 5), sticky="ew")
 
         browse_btn = tkinter.Button(
-            loc_frame, text="Browse...", command=self._on_browse
+            loc_frame, text="浏览...", command=self._on_browse
         )
         browse_btn.grid(row=1, column=1)
 
@@ -128,7 +128,7 @@ class NewProjectDialog:
         name_frame = tkinter.Frame(self.dialog)
         name_frame.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
 
-        tkinter.Label(name_frame, text="File Name:").grid(
+        tkinter.Label(name_frame, text="文件名：").grid(
             row=0, column=0, sticky="w", pady=(0, 3)
         )
 
@@ -143,10 +143,10 @@ class NewProjectDialog:
         btn_frame.grid(row=4, column=0, columnspan=2, pady=12)
 
         tkinter.Button(
-            btn_frame, text="Create", width=12, command=self._on_confirm
+            btn_frame, text="创建", width=12, command=self._on_confirm
         ).pack(side="left", padx=6)
         tkinter.Button(
-            btn_frame, text="Cancel", width=12, command=self._on_cancel
+            btn_frame, text="取消", width=12, command=self._on_cancel
         ).pack(side="left", padx=6)
 
         # Configure column weights for resizing
@@ -163,7 +163,7 @@ class NewProjectDialog:
         self.height_var.set(size)
 
     def _on_browse(self):
-        directory = filedialog.askdirectory(title="Select Save Location")
+        directory = filedialog.askdirectory(title="选择保存位置")
         if directory:
             self.save_dir.set(directory)
             self.path_label.config(text=directory, fg="black")
@@ -176,30 +176,30 @@ class NewProjectDialog:
             w = int(w)
             h = int(h)
         except (ValueError, tkinter.TclError):
-            messagebox.showwarning("Invalid Size", "Dimensions must be integers.")
+            messagebox.showwarning("无效的尺寸", "尺寸必须为整数。")
             return
 
         if w < 1 or w > 128 or h < 1 or h > 128:
             messagebox.showwarning(
-                "Invalid Size", "Dimensions must be between 1 and 128."
+                "无效的尺寸", "尺寸必须在1到128之间。"
             )
             return
 
         # Validate save location
         save_dir = self.save_dir.get().strip()
         if not save_dir:
-            messagebox.showwarning("No Location", "Please select a save location.")
+            messagebox.showwarning("未选择位置", "请选择保存位置。")
             return
         if not os.path.isdir(save_dir):
             messagebox.showwarning(
-                "Invalid Location", "The selected save location does not exist."
+                "无效的位置", "选择的保存位置不存在。"
             )
             return
 
         # Validate file name
         file_name = self.file_name.get().strip()
         if not file_name:
-            messagebox.showwarning("No Name", "Please enter a file name.")
+            messagebox.showwarning("未输入文件名", "请输入文件名。")
             return
 
         if not file_name.endswith(".png"):
@@ -209,7 +209,7 @@ class NewProjectDialog:
 
         if os.path.exists(full_path):
             if not messagebox.askyesno(
-                "File Exists", f"{file_name} already exists.\nOverwrite?"
+                "文件已存在", f"{file_name} 已存在。\n是否覆盖？"
             ):
                 return
 

@@ -18,7 +18,7 @@ class Application:
 
     def __init__(self) -> None:
         self.root = tk.Tk()
-        self.root.title("Texture Maker")
+        self.root.title("贴图工坊")
 
         # -- centre a 1200 x 800 window on the primary display ----------
         self.root.geometry("1200x800")
@@ -61,7 +61,7 @@ class Application:
         from ui.welcome_screen import WelcomeScreen
 
         self._welcome = WelcomeScreen(self.root, self)
-        self.root.title("Texture Maker")
+        self.root.title("贴图工坊")
 
     def show_editor(self) -> None:
         """Display the main editor for the current model."""
@@ -118,8 +118,8 @@ class Application:
         if self.current_model.is_modified:
             name = Path(self.current_model.path).name
             response = tk.messagebox.askyesnocancel(
-                "Unsaved Changes",
-                f"Save changes to {name}?",
+                "未保存的更改",
+                f"是否保存对 {name} 的更改？",
             )
             if response is None:  # Cancel
                 return False

@@ -52,7 +52,6 @@ class MainWindow(tkinter.Frame):
             self.pane,
             self.tool_manager,
             self.app.config,
-            on_tool_change=self._on_external_tool_change,
             width=240,
         )
         self.pane.add(self.palette, width=240)
@@ -62,8 +61,8 @@ class MainWindow(tkinter.Frame):
         self.pane.add(editor_frame, stretch="always")
 
         self._build_menu()
-        self._build_toolbar(editor_frame)
         self._build_canvas_area(editor_frame)
+        self._build_toolbar(editor_frame)
 
     # ----------------------------------------------------------------
     # Menu bar
@@ -77,60 +76,60 @@ class MainWindow(tkinter.Frame):
         # File
         file_menu = tkinter.Menu(menu_bar, tearoff=0)
         file_menu.add_command(
-            label="Save",
+            label="保存",
             command=self._on_save,
             accelerator="Ctrl+S",
         )
         file_menu.add_command(
-            label="Save As...",
+            label="另存为...",
             command=self._on_save_as,
             accelerator="Ctrl+Shift+S",
         )
         file_menu.add_separator()
         file_menu.add_command(
-            label="Close",
+            label="关闭",
             command=self._on_close,
             accelerator="Ctrl+W",
         )
-        menu_bar.add_cascade(label="File", menu=file_menu)
+        menu_bar.add_cascade(label="文件", menu=file_menu)
 
         # Edit
         edit_menu = tkinter.Menu(menu_bar, tearoff=0)
-        edit_menu.add_command(label="Undo", state="disabled")
-        edit_menu.add_command(label="Redo", state="disabled")
-        menu_bar.add_cascade(label="Edit", menu=edit_menu)
+        edit_menu.add_command(label="撤销", state="disabled")
+        edit_menu.add_command(label="重做", state="disabled")
+        menu_bar.add_cascade(label="编辑", menu=edit_menu)
 
         # View
         view_menu = tkinter.Menu(menu_bar, tearoff=0)
         view_menu.add_command(
-            label="Zoom In",
+            label="放大",
             command=self._on_zoom_in,
             accelerator="Ctrl+=",
         )
         view_menu.add_command(
-            label="Zoom Out",
+            label="缩小",
             command=self._on_zoom_out,
             accelerator="Ctrl+-",
         )
         view_menu.add_command(
-            label="Reset Zoom",
+            label="重置缩放",
             command=self._on_zoom_reset,
             accelerator="Ctrl+0",
         )
         view_menu.add_separator()
         self._grid_var = tkinter.BooleanVar(value=True)
         view_menu.add_checkbutton(
-            label="Show Grid",
+            label="显示网格",
             variable=self._grid_var,
             command=self._on_toggle_grid,
             accelerator="Ctrl+G",
         )
-        menu_bar.add_cascade(label="View", menu=view_menu)
+        menu_bar.add_cascade(label="视图", menu=view_menu)
 
         # Help
         help_menu = tkinter.Menu(menu_bar, tearoff=0)
-        help_menu.add_command(label="About", command=self._on_about)
-        menu_bar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="关于", command=self._on_about)
+        menu_bar.add_cascade(label="帮助", menu=help_menu)
 
     # ----------------------------------------------------------------
     # Toolbar
@@ -143,9 +142,9 @@ class MainWindow(tkinter.Frame):
         # Tool radio buttons
         self._tool_var = tkinter.StringVar(value=Tool.PEN.name.lower())
         for tool_type, label in [
-            (Tool.PEN, "Pen"),
-            (Tool.ERASER, "Eraser"),
-            (Tool.PICKER, "Picker"),
+            (Tool.PEN, "画笔"),
+            (Tool.ERASER, "橡皮"),
+            (Tool.PICKER, "取色器"),
         ]:
             btn = tkinter.Radiobutton(
                 toolbar,
@@ -164,7 +163,7 @@ class MainWindow(tkinter.Frame):
         )
 
         # Tool size
-        tkinter.Label(toolbar, text="Size:").pack(side="left", padx=(0, 2))
+        tkinter.Label(toolbar, text="大小：").pack(side="left", padx=(0, 2))
         self._size_var = tkinter.IntVar(value=self.tool_manager.size)
         self.size_spin = tkinter.Spinbox(
             toolbar,
@@ -182,7 +181,7 @@ class MainWindow(tkinter.Frame):
         )
 
         # Zoom label
-        tkinter.Label(toolbar, text="Zoom:").pack(side="left", padx=(0, 2))
+        tkinter.Label(toolbar, text="缩放：").pack(side="left", padx=(0, 2))
         self._zoom_label = tkinter.Label(
             toolbar, text="", font=("Courier", 9)
         )
@@ -195,15 +194,15 @@ class MainWindow(tkinter.Frame):
         )
 
         # Reference image controls
-        tkinter.Label(toolbar, text="Ref:").pack(side="left", padx=(0, 2))
+        tkinter.Label(toolbar, text="参考：").pack(side="left", padx=(0, 2))
 
         self._ref_load_btn = tkinter.Button(
-            toolbar, text="Load", command=self._on_ref_load
+            toolbar, text="加载", command=self._on_ref_load
         )
         self._ref_load_btn.pack(side="left", padx=1)
 
         self._ref_clear_btn = tkinter.Button(
-            toolbar, text="Clear", command=self._on_ref_clear
+            toolbar, text="清除", command=self._on_ref_clear
         )
         self._ref_clear_btn.pack(side="left", padx=1)
 
@@ -237,6 +236,7 @@ class MainWindow(tkinter.Frame):
             self.image_model,
             self.tool_manager,
             self.app.config,
+            on_screen_pick=self._on_screen_pick,
             xscrollcommand=h_scroll.set,
             yscrollcommand=v_scroll.set,
             bg="#e0e0e0",
@@ -274,12 +274,12 @@ class MainWindow(tkinter.Frame):
         if path:
             name = Path(path).name
         else:
-            name = "untitled.png"
+            name = "未命名.png"
 
         if self.image_model.is_modified:
-            title = f"*{name} - Texture Maker"
+            title = f"*{name} - 贴图工坊"
         else:
-            title = f"{name} - Texture Maker"
+            title = f"{name} - 贴图工坊"
 
         self.winfo_toplevel().title(title)
 
@@ -300,11 +300,15 @@ class MainWindow(tkinter.Frame):
 
     def _on_tool_change(self, tool):
         self.tool_manager.current_tool = tool
+        self.canvas.update_cursor()
 
-    def _on_external_tool_change(self, tool):
-        """Called from PalettePanel when the colour picker button is pressed."""
-        self._tool_var.set(tool.name.lower())
-        self.tool_manager.current_tool = tool
+    def _on_screen_pick(self):
+        """Called after screen colour picker grabs a colour."""
+        self.palette.sync_from_tool()
+        # 取色后自动切回画笔
+        self.tool_manager.current_tool = Tool.PEN
+        self._tool_var.set(Tool.PEN.name.lower())
+        self.canvas.update_cursor()
 
     def _on_size_change(self):
         try:
@@ -340,7 +344,7 @@ class MainWindow(tkinter.Frame):
 
     def _on_ref_load(self):
         path = filedialog.askopenfilename(
-            title="Load Reference Image",
+            title="加载参考图",
             filetypes=[
                 ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp"),
                 ("All files", "*.*"),
@@ -354,7 +358,7 @@ class MainWindow(tkinter.Frame):
             self.canvas.set_reference_image(img)
             self.tool_manager.reference_image = img
         except Exception as exc:
-            messagebox.showerror("Error", f"Could not load reference:\n{exc}")
+            messagebox.showerror("错误", f"无法加载参考图：\n{exc}")
 
     def _on_ref_clear(self):
         self.canvas.set_reference_image(None)
@@ -381,7 +385,7 @@ class MainWindow(tkinter.Frame):
 
     def _on_save_as(self):
         path = filedialog.asksaveasfilename(
-            title="Save Texture As",
+            title="另存为",
             defaultextension=".png",
             filetypes=[("PNG files", "*.png")],
         )
@@ -400,8 +404,8 @@ class MainWindow(tkinter.Frame):
 
     def _on_about(self):
         messagebox.showinfo(
-            "About Texture Maker",
-            "Texture Maker v1.0\n\n"
-            "A pixel art texture editor for Minecraft modding.\n"
-            "Built with Python, tkinter, and Pillow.",
+            "关于贴图工坊",
+            "贴图工坊 v1.0\n\n"
+            "Minecraft 模组像素图绘制工具。\n"
+            "基于 Python、tkinter 和 Pillow 构建。",
         )

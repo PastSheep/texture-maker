@@ -43,7 +43,7 @@ class RecentItemRow(tkinter.Frame):
         # Delete button
         del_btn = tkinter.Button(
             self,
-            text="X",
+            text="×",
             width=2,
             bd=0,
             fg="#999",
@@ -83,7 +83,7 @@ class WelcomeScreen(tkinter.Frame):
         # -- Title --
         title = tkinter.Label(
             outer,
-            text="Texture Maker",
+            text="贴图工坊",
             font=("TkDefaultFont", 36, "bold"),
         )
         title.pack(pady=(0, 30))
@@ -94,7 +94,7 @@ class WelcomeScreen(tkinter.Frame):
 
         self._new_btn = tkinter.Button(
             btn_frame,
-            text="New Project",
+            text="新建项目",
             width=22,
             height=2,
             font=("TkDefaultFont", 11),
@@ -104,7 +104,7 @@ class WelcomeScreen(tkinter.Frame):
 
         self._open_btn = tkinter.Button(
             btn_frame,
-            text="Open Project",
+            text="打开项目",
             width=22,
             height=2,
             font=("TkDefaultFont", 11),
@@ -118,7 +118,7 @@ class WelcomeScreen(tkinter.Frame):
 
         recent_header = tkinter.Label(
             recent_container,
-            text="Recent Projects",
+            text="最近项目",
             font=("TkDefaultFont", 12, "bold"),
             anchor="w",
         )
@@ -167,7 +167,7 @@ class WelcomeScreen(tkinter.Frame):
         if not recent:
             empty = tkinter.Label(
                 self._recent_list,
-                text="(no recent projects)",
+                text="（暂无最近项目）",
                 fg="#999",
                 font=("TkDefaultFont", 9),
             )
@@ -195,7 +195,7 @@ class WelcomeScreen(tkinter.Frame):
 
     def _on_open_project(self):
         path = filedialog.askopenfilename(
-            title="Open PNG Texture",
+            title="打开PNG贴图",
             filetypes=[("PNG files", "*.png")],
         )
         if not path:
@@ -208,13 +208,12 @@ class WelcomeScreen(tkinter.Frame):
             img = Image.open(path)
             if img.width > 128 or img.height > 128:
                 messagebox.showwarning(
-                    "Size Exceeded",
-                    f"Image dimensions ({img.width}x{img.height}) "
-                    "exceed the 128x128 limit.",
+                    "尺寸超限",
+                    f"图片尺寸（{img.width}×{img.height}）超过了128×128的上限。",
                 )
                 return
         except Exception as exc:
-            messagebox.showerror("Error", f"Could not open image:\n{exc}")
+            messagebox.showerror("错误", f"无法打开图片：\n{exc}")
             return
 
         self.app.open_project(path)

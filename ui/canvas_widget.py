@@ -1,5 +1,5 @@
 import tkinter
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageGrab
 
 from ui.tools import Tool
 
@@ -15,7 +15,7 @@ class PixelCanvas(tkinter.Canvas):
       - 实时局部刷新
     """
 
-    def __init__(self, parent, image_model, tool_manager, config_manager, **kwargs):
+    def __init__(self, parent, image_model, tool_manager, config_manager, on_screen_pick=None, **kwargs):
         kwargs.setdefault("highlightthickness", 0)
         kwargs.setdefault("background", "#FFFFFF")
         super().__init__(parent, **kwargs)
@@ -23,6 +23,7 @@ class PixelCanvas(tkinter.Canvas):
         self.image_model = image_model
         self.tool_manager = tool_manager
         self.config_manager = config_manager
+        self._on_screen_pick_cb = on_screen_pick
 
         # --- 画布状态 ---
         self.zoom = 16                 # 每像素缩放的屏幕像素数
@@ -75,11 +76,11 @@ class PixelCanvas(tkinter.Canvas):
     # ==============================================================
 
     def _on_mouse_down(self, event):
-        px, py = self.get_pixel_from_event(event)
-        # 取色器模式：点一下就完成，不进入拖拽
+        # 取色器模式：拾取屏幕上任意位置的像素颜色
         if self.tool_manager.current_tool == Tool.PICKER:
-            self._pick_color(px, py)
+            self._pick_screen_color(event.x_root, event.y_root)
             return
+        px, py = self.get_pixel_from_event(event)
         self._drawing = True
         self._last_pixel = None
         self._draw_at(px, py)
@@ -97,12 +98,19 @@ class PixelCanvas(tkinter.Canvas):
         self._drawing = False
         self._last_pixel = None
 
-    def _pick_color(self, x, y):
-        """取色：从 image_model 读取颜色并设置到 tool_manager。"""
-        if not (0 <= x < self.image_model.width and 0 <= y < self.image_model.height):
-            return
-        color = self.image_model.get_pixel(x, y)
-        self.tool_manager.color = color
+    def _pick_screen_color(self, screen_x, screen_y):
+        """从屏幕坐标 (screen_x, screen_y) 抓取像素颜色。"""
+        try:
+            img = ImageGrab.grab(bbox=(screen_x, screen_y, screen_x + 1, screen_y + 1))
+            color = img.getpixel((0, 0))
+            # ImageGrab 返回 RGB，补齐 alpha 通道
+            if len(color) == 3:
+                color = (color[0], color[1], color[2], 255)
+            self.tool_manager.color = color
+            if self._on_screen_pick_cb:
+                self._on_screen_pick_cb()
+        except Exception:
+            pass
 
     def _draw_at(self, x, y):
         """在 (x, y) 处执行绘制（受当前工具、大小影响）。"""
@@ -117,9 +125,12 @@ class PixelCanvas(tkinter.Canvas):
             self.refresh_rect(px, py)
         self._last_pixel = (x, y)
 
-    # ==============================================================
-    # 颜色转换
-    # ==============================================================
+    def update_cursor(self):
+        """根据当前工具更新画布鼠标样式。"""
+        if self.tool_manager.current_tool == Tool.PICKER:
+            self.config(cursor="crosshair")
+        else:
+            self.config(cursor="")
 
     @staticmethod
     def _rgba_to_hex(r, g, b, a):

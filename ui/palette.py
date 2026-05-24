@@ -1,7 +1,7 @@
 """PalettePanel -- vertical colour palette panel for Texture Maker.
 
 Contains:
-  A. Preset colour swatches by category (collapsible)
+  A. Preset colour swatches (flat grid)
   B. Current colour preview with RGB/HEX readout
   C. RGB + Alpha sliders
   D. Custom palette (from config, with add/remove)
@@ -12,6 +12,7 @@ Contains:
 import tkinter
 from tkinter import filedialog, messagebox
 from collections import Counter
+import colorsys
 
 from PIL import Image
 
@@ -21,32 +22,20 @@ from ui.tools import Tool
 # Built-in colour presets (Minecraft-themed)
 # ---------------------------------------------------------------------------
 
-PRESET_COLORS = {
-    "Metal": [
-        "#C0C0C0", "#808080", "#FFD700", "#CD7F32",
-        "#A0A0A0", "#E8E8E8", "#B87333", "#D4AF37",
-    ],
-    "Ore": [
-        "#6B8E23", "#8B4513", "#A0522D", "#CD853F",
-        "#D2691E", "#B8860B", "#556B2F", "#8B0000",
-    ],
-    "Gem": [
-        "#FF0000", "#00FF00", "#0000FF", "#00FFFF",
-        "#FF00FF", "#7FFFD4", "#4B0082", "#FF1493",
-    ],
-    "Nature": [
-        "#228B22", "#8B4513", "#F5F5DC", "#87CEEB",
-        "#808080", "#2F4F4F", "#D2B48C", "#778899",
-    ],
-    "Basic": [
-        "#000000", "#FFFFFF", "#FF0000", "#00FF00",
-        "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF",
-    ],
-    "Gray": [
-        "#000000", "#333333", "#666666", "#999999",
-        "#CCCCCC", "#FFFFFF", "#1A1A1A", "#4D4D4D",
-    ],
-}
+PRESET_COLORS = [
+    "#C0C0C0", "#808080", "#FFD700", "#CD7F32",
+    "#A0A0A0", "#E8E8E8", "#B87333", "#D4AF37",
+    "#6B8E23", "#8B4513", "#A0522D", "#CD853F",
+    "#D2691E", "#B8860B", "#556B2F", "#8B0000",
+    "#FF0000", "#00FF00", "#0000FF", "#00FFFF",
+    "#FF00FF", "#7FFFD4", "#4B0082", "#FF1493",
+    "#228B22", "#8B4513", "#F5F5DC", "#87CEEB",
+    "#808080", "#2F4F4F", "#D2B48C", "#778899",
+    "#000000", "#FFFFFF", "#FF0000", "#00FF00",
+    "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF",
+    "#333333", "#666666", "#999999",
+    "#CCCCCC", "#1A1A1A", "#4D4D4D",
+]
 
 
 class PalettePanel(tkinter.Frame):
@@ -81,7 +70,7 @@ class PalettePanel(tkinter.Frame):
     # ----------------------------------------------------------------
 
     def _build_current_color(self):
-        frame = tkinter.LabelFrame(self, text="Current Color", padx=6, pady=5)
+        frame = tkinter.LabelFrame(self, text="当前颜色", padx=6, pady=5)
         frame.pack(fill="x", padx=5, pady=(5, 2))
 
         row = tkinter.Frame(frame)
@@ -106,7 +95,7 @@ class PalettePanel(tkinter.Frame):
     # ----------------------------------------------------------------
 
     def _build_rgb_sliders(self):
-        frame = tkinter.LabelFrame(self, text="RGBA Generator", padx=6, pady=5)
+        frame = tkinter.LabelFrame(self, text="RGBA 颜色生成器", padx=6, pady=5)
         frame.pack(fill="x", padx=5, pady=2)
 
         self._slider_vars = {}
@@ -137,72 +126,47 @@ class PalettePanel(tkinter.Frame):
             val_label.pack(side="left")
 
     # ----------------------------------------------------------------
-    # B. Preset categories (collapsible)
+    # B. Preset swatches (flat grid)
     # ----------------------------------------------------------------
 
     def _build_preset_categories(self):
-        self._preset_frames = []
-        for category, colors in PRESET_COLORS.items():
-            self._add_preset_category(category, colors)
+        frame = tkinter.LabelFrame(self, text="预设色板", padx=4, pady=3)
+        frame.pack(fill="x", padx=5, pady=2)
 
-    def _add_preset_category(self, name, colors):
-        outer = tkinter.LabelFrame(self, text=name, padx=4, pady=3)
-        outer.pack(fill="x", padx=5, pady=2)
+        # 按色相→饱和度→明度排序
+        def _hsv_key(hex_color):
+            h = hex_color.lstrip("#")
+            r, g, b = int(h[0:2], 16) / 255.0, int(h[2:4], 16) / 255.0, int(h[4:6], 16) / 255.0
+            h_val, s_val, v_val = colorsys.rgb_to_hsv(r, g, b)
+            return (h_val, s_val, v_val)
 
-        # Collapse toggle button
-        hdr = tkinter.Frame(outer)
-        hdr.pack(fill="x")
-        toggle_btn = tkinter.Button(
-            hdr,
-            text="[-]",
-            width=3,
-            bd=0,
-            font=("Courier", 9),
-            command=lambda: self._toggle_category(outer),
-        )
-        toggle_btn.pack(side="right")
+        sorted_colors = sorted(PRESET_COLORS, key=_hsv_key)
 
-        # Swatch grid container
-        container = tkinter.Frame(outer)
-        container.pack()
-        outer._expanded = True
-        outer._container = container
-
-        cols = 4
-        for i, hex_color in enumerate(colors):
+        cols = 8
+        for i, hex_color in enumerate(sorted_colors):
             r = i // cols
             c = i % cols
             swatch = tkinter.Canvas(
-                container,
-                width=20,
-                height=20,
+                frame,
+                width=22,
+                height=22,
                 highlightthickness=1,
                 highlightbackground="#ccc",
                 cursor="hand2",
             )
             swatch.grid(row=r, column=c, padx=1, pady=1)
-            swatch.create_rectangle(0, 0, 20, 20, fill=hex_color, outline="")
+            swatch.create_rectangle(0, 0, 22, 22, fill=hex_color, outline="")
             swatch.bind(
                 "<Button-1>",
                 lambda _e, h=hex_color: self._on_color_click(h),
             )
-
-        self._preset_frames.append(outer)
-
-    @staticmethod
-    def _toggle_category(outer):
-        outer._expanded = not outer._expanded
-        if outer._expanded:
-            outer._container.pack()
-        else:
-            outer._container.pack_forget()
 
     # ----------------------------------------------------------------
     # D. Custom palette
     # ----------------------------------------------------------------
 
     def _build_custom_palette(self):
-        frame = tkinter.LabelFrame(self, text="Custom Palette", padx=4, pady=3)
+        frame = tkinter.LabelFrame(self, text="自定义色板", padx=4, pady=3)
         frame.pack(fill="x", padx=5, pady=2)
 
         self._custom_container = tkinter.Frame(frame)
@@ -210,10 +174,18 @@ class PalettePanel(tkinter.Frame):
 
         add_btn = tkinter.Button(
             frame,
-            text="Add to Custom Palette",
+            text="添加当前颜色",
             command=self._on_add_custom,
         )
         add_btn.pack(pady=3, fill="x")
+
+        hint = tkinter.Label(
+            frame,
+            text="右键点击色块删除",
+            fg="#999",
+            font=("TkDefaultFont", 8),
+        )
+        hint.pack()
 
         self._refresh_custom()
 
@@ -225,14 +197,14 @@ class PalettePanel(tkinter.Frame):
         if not colors:
             empty = tkinter.Label(
                 self._custom_container,
-                text="(empty)",
+                text="（空）",
                 fg="#999",
                 font=("TkDefaultFont", 9),
             )
             empty.pack()
             return
 
-        cols = 4
+        cols = 8
         for i, hex_color in enumerate(colors):
             r = i // cols
             c = i % cols
@@ -261,7 +233,7 @@ class PalettePanel(tkinter.Frame):
 
     def _on_extract(self):
         path = filedialog.askopenfilename(
-            title="Extract Colors from Image",
+            title="从图片提取颜色",
             filetypes=[("PNG files", "*.png")],
         )
         if not path:
@@ -270,7 +242,7 @@ class PalettePanel(tkinter.Frame):
         try:
             img = Image.open(path).convert("RGBA")
         except Exception as exc:
-            messagebox.showerror("Error", f"Could not open image:\n{exc}")
+            messagebox.showerror("错误", f"无法打开图片：\n{exc}")
             return
 
         pixels = img.load()
@@ -286,8 +258,8 @@ class PalettePanel(tkinter.Frame):
 
         if not counter:
             messagebox.showinfo(
-                "No Colors",
-                "No sufficiently opaque pixels found in the image.",
+                "未提取到颜色",
+                "图片中未提取到足够不透明的像素颜色。",
             )
             return
 
@@ -299,27 +271,27 @@ class PalettePanel(tkinter.Frame):
 
     def _show_extracted_colors(self, colors):
         top = tkinter.Toplevel(self)
-        top.title("Extracted Colors")
+        top.title("提取的颜色")
         top.transient(self.winfo_toplevel())
         top.grab_set()
 
         tkinter.Label(
             top,
-            text="Click a colour to add it to your custom palette:",
+            text="点击颜色将其添加到自定义色板：",
             font=("TkDefaultFont", 10),
         ).pack(pady=(8, 4))
 
         cf = tkinter.Frame(top)
         cf.pack(padx=12, pady=6)
 
-        cols = 4
+        cols = 8
         for i, hex_color in enumerate(colors):
             r = i // cols
             c = i % cols
             swatch = tkinter.Canvas(
                 cf,
-                width=28,
-                height=28,
+                width=24,
+                height=24,
                 highlightthickness=1,
                 highlightbackground="#ccc",
                 cursor="hand2",
@@ -331,7 +303,7 @@ class PalettePanel(tkinter.Frame):
                 lambda _e, h=hex_color, t=top: self._on_extracted_click(h, t),
             )
 
-        tkinter.Button(top, text="Close", command=top.destroy).pack(pady=(4, 8))
+        tkinter.Button(top, text="关闭", command=top.destroy).pack(pady=(4, 8))
 
         top.update_idletasks()
         top.minsize(top.winfo_width(), top.winfo_height())
@@ -347,21 +319,12 @@ class PalettePanel(tkinter.Frame):
     # ----------------------------------------------------------------
 
     def _build_action_buttons(self):
-        # Extract from image
         extract_btn = tkinter.Button(
             self,
-            text="Extract from Image",
+            text="从图片提取",
             command=self._on_extract,
         )
         extract_btn.pack(fill="x", padx=5, pady=2)
-
-        # Color picker tool
-        picker_btn = tkinter.Button(
-            self,
-            text="Color Picker Tool",
-            command=self._on_picker_tool,
-        )
-        picker_btn.pack(fill="x", padx=5, pady=(2, 5))
 
     # ==================================================================
     # Colour selection
@@ -389,10 +352,14 @@ class PalettePanel(tkinter.Frame):
         self.tool_manager.color = (r, g, b, a)
         self._update_preview()
 
-    def _on_picker_tool(self):
-        self.tool_manager.current_tool = Tool.PICKER
-        if self._on_tool_change_cb:
-            self._on_tool_change_cb(Tool.PICKER)
+    def sync_from_tool(self):
+        """外部颜色变更后同步 RGB 滑块和预览（如屏幕取色器）。"""
+        r, g, b, a = self.tool_manager.color
+        self._slider_vars["r"].set(r)
+        self._slider_vars["g"].set(g)
+        self._slider_vars["b"].set(b)
+        self._slider_vars["a"].set(a)
+        self._update_preview()
 
     def _on_add_custom(self):
         r, g, b, a = self.tool_manager.color
