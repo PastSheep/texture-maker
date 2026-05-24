@@ -1,0 +1,136 @@
+"""ConfigManager -- persistent JSON config for Texture Maker."""
+
+import json
+import os
+
+_DEFAULT_CONFIG = {
+    "recent_projects": [],
+    "last_save_dir": "",
+    "max_recent": 10,
+    "default_canvas_size": 16,
+    "palette": {"custom_colors": []},
+    "tool_size": 1,
+    "zoom_level": 16,
+    "reference_opacity": 0.3,
+    "show_grid": True,
+    "grid_color": "#808080",
+}
+
+
+def _get_config_path() -> str:
+    """Return the path to the JSON config file under the user home directory."""
+    config_dir = os.path.join(os.path.expanduser("~"), ".texture-maker")
+    os.makedirs(config_dir, exist_ok=True)
+    return os.path.join(config_dir, "config.json")
+
+
+class ConfigManager:
+    """Load, access, persist application configuration.
+
+    Usage:
+        cfg = ConfigManager()          # auto-loads from ~/.texture-maker/config.json
+        val = cfg.get("zoom_level", 1)
+        cfg.set("show_grid", False)    # also calls save()
+    """
+
+    def __init__(self) -> None:
+        self._path = _get_config_path()
+        self._data: dict = _DEFAULT_CONFIG.copy()
+        self._load()
+
+    # ------------------------------------------------------------------
+    # public API
+    # ------------------------------------------------------------------
+
+    def get(self, key: str, default=None):
+        """Retrieve a configuration value by key."""
+        return self._data.get(key, default)
+
+    def set(self, key: str, value) -> None:
+        """Set a configuration value and immediately persist to disk."""
+        self._data[key] = value
+        self.save()
+
+    def save(self) -> None:
+        """Write the current configuration to the JSON file."""
+        with open(self._path, "w", encoding="utf-8") as fh:
+            json.dump(self._data, fh, indent=2, ensure_ascii=False)
+
+    def add_recent(self, path: str) -> None:
+        """Insert *path* at the front of the recent-projects list.
+
+        Duplicates are removed and the list is truncated to *max_recent* entries.
+        """
+        recent: list = self._data.setdefault("recent_projects", [])
+        # Remove any existing occurrence of the same path.
+        if path in recent:
+            recent.remove(path)
+        # Insert at the front.
+        recent.insert(0, path)
+        # Truncate.
+        max_recent = self._data.get("max_recent", 10)
+        self._data["recent_projects"] = recent[:max_recent]
+        self.save()
+
+    def get_recent(self) -> list[str]:
+        """Return the list of recent project file paths."""
+        return list(self._data.get("recent_projects", []))
+
+    # ------------------------------------------------------------------
+    # Custom palette colors
+    # ------------------------------------------------------------------
+
+    def get_custom_colors(self) -> list[str]:
+        """Return the list of custom palette hex colours."""
+        palette = self._data.setdefault("palette", {})
+        return list(palette.get("custom_colors", []))
+
+    def add_custom_color(self, hex_color: str) -> None:
+        """Add a hex colour to the custom palette if not already present."""
+        palette = self._data.setdefault("palette", {})
+        colors: list = palette.setdefault("custom_colors", [])
+        if hex_color not in colors:
+            colors.append(hex_color)
+            self.save()
+
+    def remove_custom_color(self, hex_color: str) -> None:
+        """Remove a hex colour from the custom palette."""
+        palette = self._data.setdefault("palette", {})
+        colors: list = palette.setdefault("custom_colors", [])
+        if hex_color in colors:
+            colors.remove(hex_color)
+            self.save()
+
+    def remove_recent(self, path: str) -> None:
+        """Remove *path* from the recent-projects list."""
+        recent: list = self._data.get("recent_projects", [])
+        if path in recent:
+            recent.remove(path)
+            self.save()
+
+    def set_tool_size(self, size: int) -> None:
+        """Persist the last-used tool size."""
+        self.set("tool_size", size)
+
+    def get_tool_size(self, default: int = 1) -> int:
+        """Return the persisted tool size."""
+        return self.get("tool_size", default)
+
+    # ------------------------------------------------------------------
+    # internal helpers
+    # ------------------------------------------------------------------
+
+    def _load(self) -> None:
+        """Load configuration from disk, falling back to defaults."""
+        if not os.path.isfile(self._path):
+            self.save()  # create default file
+            return
+        try:
+            with open(self._path, "r", encoding="utf-8") as fh:
+                stored = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            stored = {}
+        # Merge: keep defaults for keys not yet in the stored file.
+        merged = _DEFAULT_CONFIG.copy()
+        merged.update(stored)
+        self._data = merged
